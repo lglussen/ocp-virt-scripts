@@ -14,19 +14,19 @@ if assert_single_pvc_volume ${SOURCE}; then
     export PVC=$(yq '.spec.template.spec.volumes[0].persistentVolumeClaim.claimName' ${SOURCE})
 elif assert_dv_plus_cloud_init  ${SOURCE}; then
     DV_NAME=$(yq '.spec.template.spec.volumes[] | select(.dataVolume).dataVolume.name)' ${SOURCE}) 
+    echo "DV_NAME: $DV_NAME"
     export PVC=$(oc get datavolume $DV_NAME -n $SOURCE_NAMESPACE -o yaml | yq '.status.claimName')
+    echo "PVC:  $PVC"
 else 
   exit -1
 fi
 
 export PVC_STORAGE=$(oc get pvc $PVC -n $SOURCE_NAMESPACE -o yaml | yq '.status.capacity.storage')
+echo "PVC_STORAGE:  $PVC_STORAGE"
 
-
-
-# get the Persistent Volume Claim (PVC) name
-
-export PVC_STORAGE=30Gi
 export DV_CLONE="${VM_NAME}-${SOURCE_NAMESPACE}-clone"
+echo "DV_CLONE: $DV_CLONE"
+
 # Transform source configuration to destination configuration
 yq 'del(.status) | 
     del(.metadata) | 
