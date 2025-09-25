@@ -37,7 +37,7 @@ yq 'del(.status) |
         "spec": {
                 "storage": { 
                     "accessModes": [ "ReadWriteOnce" ], 
-                    "resources": { "requests": { "storage": strenv(PVC_STORAGE) }
+                    "resources": { "requests": { "storage": strenv(PVC_STORAGE) }}
                 },
                 "source": {"pvc": {"namespace": strenv(SOURCE_NAMESPACE), "name":strenv(PVC) }}
         }
