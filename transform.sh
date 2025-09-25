@@ -11,13 +11,17 @@ SOURCE=source_vm/${VM_NAME}.yaml
 oc get virtualmachine $VM_NAME -n $SOURCE_NAMESPACE -o yaml > ${SOURCE}
 
 if assert_single_pvc_volume ${SOURCE}; then 
+    # the typical migrated VM
     export PVC=$(yq '.spec.template.spec.volumes[0].persistentVolumeClaim.claimName' ${SOURCE})
 elif assert_dv_plus_cloud_init  ${SOURCE}; then
+    # if we are here it is because we are testing vms that were probably provisioned directly in opneshift and not something that was imported
+    # TODO: if we here, this solution is currently dependent on the disk order. see: ...devices.disks[0].name
     DV_NAME=$(yq '.spec.template.spec.volumes[] | select(.dataVolume).dataVolume.name' ${SOURCE}) 
     echo "DV_NAME: $DV_NAME"
     export PVC=$(oc get datavolume $DV_NAME -n $SOURCE_NAMESPACE -o yaml | yq '.status.claimName')
     echo "PVC:  $PVC"
-else 
+else
+  # special case migrated VMs with multiple disks. Out of scope.
   exit -1
 fi
 
@@ -27,8 +31,8 @@ echo "PVC_STORAGE:  $PVC_STORAGE"
 export DV_CLONE="${VM_NAME}-${SOURCE_NAMESPACE}-clone"
 echo "DV_CLONE: $DV_CLONE"
 
-# Transform source configuration to destination configuration
 
+# Transform source configuration to destination configuration
 yq 'del(.status) | 
     del(.metadata) | 
     del(.. | select(has("macAddress")).macAddress) |
