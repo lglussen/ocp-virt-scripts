@@ -41,7 +41,6 @@ yq 'del(.status) |
                 },
                 "source": {"pvc": {"namespace": strenv(SOURCE_NAMESPACE), "name":strenv(PVC) }}
         }
-    }
+    } |
+    .spec.template.spec.volumes[] | select(.dataVolume).dataVolume.name = strenv(DV_CLONE)
    ' ${SOURCE} > dest_vm/new-${VM_NAME}.yaml
-
- 
