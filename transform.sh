@@ -42,6 +42,6 @@ yq 'del(.status) |
                 "source": {"pvc": {"namespace": strenv(SOURCE_NAMESPACE), "name":strenv(PVC) }}
         }
     }
-   ' ${SOURCE} > dest_vm/new-${SOURCE}
+   ' ${SOURCE} > dest_vm/new-${VM_NAME}.yaml
 
  

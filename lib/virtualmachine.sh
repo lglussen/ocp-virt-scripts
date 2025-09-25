@@ -1,7 +1,7 @@
 function assert_single_pvc_volume {
   NUM_VOLUMES=$(yq '.spec.template.spec.volumes | length' ${1})
   if [ "$NUM_VOLUMES" == "1" ]; then echo "single PVC volume configuration detected"; else
-    echo "unsupported case with multiple volumes. "
+    echo "case with multiple volumes. "
     return -1
   fi
 }
