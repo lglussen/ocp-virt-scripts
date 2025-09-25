@@ -43,6 +43,6 @@ yq 'del(.status) |
                 "source": {"pvc": {"namespace": strenv(SOURCE_NAMESPACE), "name":strenv(PVC) }}
         }
     } |
-    .spec.template.spec.volumes = { "dataVolume": { "name": strenv(DV_CLONE) }, "name": "root-disk" } |
+    .spec.template.spec.volumes = [{ "dataVolume": { "name": strenv(DV_CLONE) }, "name": "root-disk" }] |
     .spec.template.spec.domain.devices.disks[0].name = "root-disk"
    ' ${SOURCE} > dest_vm/new-${VM_NAME}.yaml
