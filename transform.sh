@@ -6,9 +6,9 @@ source lib/virtualmachine.sh
 # Get the existing Virtual Machine configuration
 oc get virtualmachine $VM_NAME -n $SOURCE_NAMESPACE -o yaml > ${VM_NAME}.yaml
 
-if `assert_single_pvc_volume ${VM_NAME}.yaml`; then 
+if assert_single_pvc_volume ${VM_NAME}.yaml; then 
     export PVC=$(yq '.spec.template.spec.volumes[0].persistentVolumeClaim.claimName' ${VM_NAME}.yaml)
-elif `assert_dv_plus_cloud_init  ${VM_NAME}.yaml`; then
+elif assert_dv_plus_cloud_init  ${VM_NAME}.yaml; then
     DV_NAME=$(yq '.spec.template.spec.volumes[] | select(.dataVolume).dataVolume.name)' ${VM_NAME}.yaml) 
     export PVC=$(oc get datavolume $DV_NAME -n $SOURCE_NAMESPACE -o yaml | yq '.status.claimName')
 else 
