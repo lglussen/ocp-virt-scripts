@@ -32,6 +32,7 @@ echo "DV_CLONE: $DV_CLONE"
 yq 'del(.status) | 
     del(.metadata) | 
     del(.. | select(has("macAddress")).macAddress) |
+    del(.spec.preference.revisionName) |
     .metadata = { "namespace": strenv(TARGET_NAMESPACE), "name": strenv(VM_NAME) } |
     .spec.dataVolumeTemplates = [{
         "metadata":{"name": strenv(DV_CLONE)},
