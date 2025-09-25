@@ -33,7 +33,7 @@ yq 'del(.status) |
     del(.metadata) | 
     del(.. | select(has("macAddress")).macAddress) |
     .metadata = { "namespace": strenv(TARGET_NAMESPACE), "name": strenv(VM_NAME) } |
-    .spec.dataVolumeTemplates = {
+    .spec.dataVolumeTemplates = [{
         "metadata":{"name": strenv(DV_CLONE)},
         "spec": {
                 "storage": { 
@@ -42,7 +42,7 @@ yq 'del(.status) |
                 },
                 "source": {"pvc": {"namespace": strenv(SOURCE_NAMESPACE), "name":strenv(PVC) }}
         }
-    } |
+    }] |
     .spec.template.spec.volumes = [{ "dataVolume": { "name": strenv(DV_CLONE) }, "name": "root-disk" }] |
     .spec.template.spec.domain.devices.disks[0].name = "root-disk"
    ' ${SOURCE} > dest_vm/new-${VM_NAME}.yaml
