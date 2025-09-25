@@ -13,7 +13,7 @@ oc get virtualmachine $VM_NAME -n $SOURCE_NAMESPACE -o yaml > ${SOURCE}
 if assert_single_pvc_volume ${SOURCE}; then 
     export PVC=$(yq '.spec.template.spec.volumes[0].persistentVolumeClaim.claimName' ${SOURCE})
 elif assert_dv_plus_cloud_init  ${SOURCE}; then
-    DV_NAME=$(yq '.spec.template.spec.volumes[] | select(.dataVolume).dataVolume.name)' ${SOURCE}) 
+    DV_NAME=$(yq '.spec.template.spec.volumes[] | select(.dataVolume).dataVolume.name' ${SOURCE}) 
     echo "DV_NAME: $DV_NAME"
     export PVC=$(oc get datavolume $DV_NAME -n $SOURCE_NAMESPACE -o yaml | yq '.status.claimName')
     echo "PVC:  $PVC"
