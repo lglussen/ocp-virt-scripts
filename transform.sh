@@ -28,6 +28,7 @@ export DV_CLONE="${VM_NAME}-${SOURCE_NAMESPACE}-clone"
 echo "DV_CLONE: $DV_CLONE"
 
 # Transform source configuration to destination configuration
+
 yq 'del(.status) | 
     del(.metadata) | 
     del(.. | select(has("macAddress")).macAddress) |
@@ -42,5 +43,6 @@ yq 'del(.status) |
                 "source": {"pvc": {"namespace": strenv(SOURCE_NAMESPACE), "name":strenv(PVC) }}
         }
     } |
-    .spec.template.spec.volumes[] | select(.dataVolume).dataVolume.name = strenv(DV_CLONE)
+    .spec.template.spec.volumes = { "dataVolume": { "name": strenv(DV_CLONE) }, "name": "root-disk" } |
+    .spec.template.spec.domain.devices.disks[0].name = "root-disk"
    ' ${SOURCE} > dest_vm/new-${VM_NAME}.yaml
