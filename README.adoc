@@ -1,0 +1,68 @@
+
+= VM Namespace Migration in OpenShift
+
+Scripts to support cloning VMs into a new namespace as a workaround to not being no migration feature to allow migrating to new namespaces.
+
+It would be more "efficient" to reuse the same PV rather than cloning, but this method is simpler and doesn't require anything destructive to the original VM setup (no deleting of the original PVC objects required). This makes it easier to revert to the old vm if problems are encountered bringing the VM online in the new namespace.
+
+The scripts in the repository handle a few repetitive tasks but are by no means a full solution for all vms.  The _may_ work for all your vms, or maybe just a few.
+Instead, see this as a reference point for understanding how to cleanup and create new VM definitions based on the old definitions. 
+
+.The scripts do the following:
+1. configure namespace permissions
+2. transform the source VM config into a new VM confg for the destination namespace
+    * strips out state information and instance metadata (eg: uuid)
+    * strips out Mac addresses
+    * creates a DataVolume template to copy the PVC of the original VM
+    * modifies the namespace
+
+== Prerequisites
+These scripts require `oc` and `yq` to run. The `Containerfile` in this project defines a working environment that can be used to execute the scirpts.
+
+If you are missing `yq` another option would be to us `oc debug` to provision an environment with yq and this repository. 
+
+[source]
+----
+oc debug --image=push quay.io/lglussen/ocp-tools:latest
+----
+
+
+== Configure Clone Permissions
+
+To allow cloning VM volumes into destination namespace, permissions need to be
+configured to allow access.
+[source]
+----
+sh lib/clone-permissions.sh <source namepsace> <destination namespace>
+----
+
+== Create the new VirtualMachine configuration
+
+We can export and modify the source VM configuration to deploy in our new 
+namespace.
+
+[,shell]
+----
+# for a single vm
+./transform.sh vm-name source-namespace destination-namespace
+
+# for all vms in a namespace
+for vm in `oc get vms -n source-ns -o custom-columns=NAME:.metadata.name --no-headers`; do
+  ./transform.sh $vm source-ns destination-ns
+done
+----
+
+.Output Directories:
+****
+
+
+source_vm/:: `<vm-name>.yaml` (export of the current vm configuration)
+dest_vm/:: `new-<vm-name>.yaml` transformed yaml of the new VM definition 
+****
+
+WARNING: this will skip vms with more than one volume unless it is exactly 2 volumes of the pattern: one dataVolume and one CloudInitNoCloud volume. This script focuses on simple / common VMs and the output can be used as a guide for converting more complicated VMs
+
+
+Lastly, you can run `oc apply -f new-<vm-name>.yaml` against the files in the `./dest_vm/` directory to create the new vm definitions. Be sure to power down the source namespace beforehand.
+
+
