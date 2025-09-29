@@ -173,7 +173,7 @@ class VM_NamespaceMigration:
 args = parser.parse_args()
 
 try:
-    subprocess.run(['oc', 'status'], check=True)
+    subprocess.run(['oc', 'status'], check=True, capture_output=True)
 except Exception as e:
     print("Ensure `oc` is on the system path AND is logged into the target cluster")
     exit(-1)
