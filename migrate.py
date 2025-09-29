@@ -53,11 +53,6 @@ class VM_NamespaceMigration:
     def __init__(self, source, dest):
         self.source_namespace = source
         self.dest_namespace = dest
-        try:
-            subprocess.run(['oc', 'status'], check=True)
-        except Exception as e:
-            print("Ensure `oc` is on the system path AND is logged into the target cluster")
-            exit(-1)
 
         
     def oc_get_vm(self, name):
@@ -133,7 +128,13 @@ class VM_NamespaceMigration:
 
 args = parser.parse_args()
 
-result = subprocess.run(['oc', 'get', 'vm' '-n', args.src, '-o', 'json'], capture_output=True, text=True, check=True)
+try:
+    subprocess.run(['oc', 'status'], check=True)
+except Exception as e:
+    print("Ensure `oc` is on the system path AND is logged into the target cluster")
+    exit(-1)
+
+result = subprocess.run(['oc', 'get', 'vm', '-n', args.src, '-o', 'json'], capture_output=True, text=True, check=True)
 vms = json.loads(result.stdout)
 migrate = VM_NamespaceMigration(args.src, args.dest)
 for vm in vms['items']:
