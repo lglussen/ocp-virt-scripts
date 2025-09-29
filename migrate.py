@@ -49,10 +49,29 @@ class KS_Object:
             if isinstance(d, list) or isinstance(d, tuple):
                 for x in d: walk(x)
 
-class VM_NamespaceMigration:
+class NamespaceMigration:
     def __init__(self, source, dest):
         self.source_namespace = source
         self.dest_namespace = dest
+
+    def get_all(self):
+        result = subprocess.run(['oc', 'get', self.ks_type(), '-n', args.src, '-o', 'json'], capture_output=True, text=True, check=True)
+        return json.loads(result.stdout)['items']
+    
+    def generate_clone_files(self, output_dir):
+        for obj in self.get_all():
+            name = obj['metadata']['name']
+            clone = self.transform(name)
+            with open(os.path.join(output_dir, f"{ks_type}-clone.{name}.json"), 'w', encoding='utf-8') as f:
+                f.write(json.dumps(clone, indent=4))
+    def ks_type(self):
+        pass
+    def transform(self, name): pass
+
+class VM_NamespaceMigration(NamespaceMigration):
+
+    def ks_type(self):
+        return "vm"
 
     def set_clone_permissions(self):
         name = "datavolume-cloner"
@@ -178,12 +197,7 @@ except Exception as e:
     print("Ensure `oc` is on the system path AND is logged into the target cluster")
     exit(-1)
 
-result = subprocess.run(['oc', 'get', 'vm', '-n', args.src, '-o', 'json'], capture_output=True, text=True, check=True)
-vms = json.loads(result.stdout)
+
 migrate = VM_NamespaceMigration(args.src, args.dest)
 migrate.set_clone_permissions()
-for vm in vms['items']:
-    vm_name = vm['metadata']['name']
-    clone = migrate.transform(vm_name)
-    with open(os.path.join(args.output_dir, f"clone-{vm_name}.json"), 'w', encoding='utf-8') as f:
-        f.write(json.dumps(clone, indent=4))
+migrate.generate_clone_files(args.output_dir)
