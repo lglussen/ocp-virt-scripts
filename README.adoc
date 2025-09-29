@@ -21,9 +21,10 @@ These scripts require `oc` and `yq` to run. The `Containerfile` in this project 
 
 If you are missing `yq` another option would be to us `oc debug` to provision an environment with yq and this repository. 
 
-[source]
+[source, shell]
 ----
 oc debug --image=push quay.io/lglussen/ocp-tools:latest
+> oc login oc login --token=${YOUR_TOKEN} --server=${YOUR_OCP_API}
 ----
 
 
@@ -31,7 +32,7 @@ oc debug --image=push quay.io/lglussen/ocp-tools:latest
 
 To allow cloning VM volumes into destination namespace, permissions need to be
 configured to allow access.
-[source]
+[source, shell]
 ----
 sh lib/clone-permissions.sh <source namepsace> <destination namespace>
 ----
