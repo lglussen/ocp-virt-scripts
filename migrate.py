@@ -94,7 +94,7 @@ class VM_NamespaceMigration:
             subprocess.run(["oc", "apply", "-f", "-"], input=json.dumps(cluster_role).encode(), check=True)
 
         try:
-            subprocess.run(["oc", "get", "rolebinding", name, '-n', self.source_namespace, '-o', 'json'], capture_output=True, check=True)
+            subprocess.run(["oc", "get", "rolebinding", f"{name}-{self.dest_namespace}", '-n', self.source_namespace, '-o', 'json'], capture_output=True, check=True)
         except Exception as e:
             subprocess.run(["oc", "apply", "-f", "-"], input=json.dumps(role_binding).encode(), check=True)
 
