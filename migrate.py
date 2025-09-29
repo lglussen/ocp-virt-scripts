@@ -5,8 +5,8 @@ import subprocess
 from argparse import ArgumentParser
 
 parser = ArgumentParser()
-parser.add_argument('src-namespace', required=True)
-parser.add_argument('dest-namespace', required=True)
+parser.add_argument('src-namespace')
+parser.add_argument('dest-namespace')
 parser.add_argument('--output-dir', default=".")
 
 class KS_Object:
