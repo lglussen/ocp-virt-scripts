@@ -54,6 +54,50 @@ class VM_NamespaceMigration:
         self.source_namespace = source
         self.dest_namespace = dest
 
+    def set_clone_permissions(self):
+        name = "datavolume-cloner"
+        cluster_role = {
+            'apiVersion': 'rbac.authorization.k8s.io/v1',
+            'kind': 'ClusterRole',
+            'metadata': { 'name': name },
+            'rules':[{
+                'apiGroups': ["cdi.kubevirt.io"],
+                'resources': ["datavolumes/source"],
+                'verbs': ["*"]
+            }]
+        }
+
+        role_binding = {
+            "apiVersion": "rbac.authorization.k8s.io/v1",
+            "kind": "RoleBinding",
+            "metadata": {
+                "name": f"{name}-{self.dest_namespace}",
+                "namespace": self.source_namespace
+            },
+            "subjects": [
+                {
+                "kind": "ServiceAccount",
+                "name": "default",
+                "namespace": self.dest_namespace
+                }
+            ],
+            "roleRef": {
+                "kind": "ClusterRole",
+                "name": name,
+                "apiGroup": "rbac.authorization.k8s.io"
+            }
+        }
+
+        try:
+            subprocess.run(["oc", "get", "clusterrole", name], capture_output=True, check=True)
+        except:
+            subprocess.run(["oc", "apply", "-f", "-"], input=json.dumps(cluster_role), check=True)
+
+        try:
+            subprocess.run(["oc", "get", "rolebinding", name, '-n', self.source_namespace, '-o', 'json'], capture_output=True, check=True)
+        except:
+            subprocess.run(["oc", "apply", "-f", "-"], input=json.dumps(role_binding), check=True)
+
         
     def oc_get_vm(self, name):
         result = subprocess.run(['oc', 'get', 'vm', name, '-n', self.source_namespace, '-o', 'json'], capture_output=True, text=True, check=True)
@@ -137,6 +181,7 @@ except Exception as e:
 result = subprocess.run(['oc', 'get', 'vm', '-n', args.src, '-o', 'json'], capture_output=True, text=True, check=True)
 vms = json.loads(result.stdout)
 migrate = VM_NamespaceMigration(args.src, args.dest)
+migrate.set_clone_permissions()
 for vm in vms['items']:
     vm_name = vm['metadata']['name']
     clone = migrate.transform(vm_name)
