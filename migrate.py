@@ -54,6 +54,13 @@ class NamespaceMigration:
         self.source_namespace = source
         self.dest_namespace = dest
 
+    def oc_status_check(self):
+        try:
+            subprocess.run(['oc', 'status'], check=True, capture_output=True)
+        except Exception as e:
+            print("Ensure `oc` is on the system path AND is logged into the target cluster")
+            exit(-1)
+
     def get_all(self):
         result = subprocess.run(['oc', 'get', self.ks_type(), '-n', args.src, '-o', 'json'], capture_output=True, text=True, check=True)
         return json.loads(result.stdout)['items']
@@ -68,16 +75,23 @@ class NamespaceMigration:
         pass
     def transform(self, name): pass
 
+    def create_if_not_exists(self, object):
+        ks_type = object['kind']
+        name = object['metadata']['name']
+        try:
+            subprocess.run(["oc", "get", ks_type, name], capture_output=True, check=True)
+        except Exception as e:
+            subprocess.run(["oc", "apply", "-f", "-"], input=json.dumps(object).encode(), check=True)
+
 class VM_NamespaceMigration(NamespaceMigration):
 
     def ks_type(self):
         return "vm"
 
-    def set_clone_permissions(self):
+    def set_permissions(self):
         name = "datavolume-cloner"
         cluster_role = {
-            'apiVersion': 'rbac.authorization.k8s.io/v1',
-            'kind': 'ClusterRole',
+            'apiVersion': 'rbac.authorization.k8s.io/v1','kind': 'ClusterRole',
             'metadata': { 'name': name },
             'rules':[{
                 'apiGroups': ["cdi.kubevirt.io"],
@@ -85,38 +99,14 @@ class VM_NamespaceMigration(NamespaceMigration):
                 'verbs': ["*"]
             }]
         }
-
         role_binding = {
-            "apiVersion": "rbac.authorization.k8s.io/v1",
-            "kind": "RoleBinding",
-            "metadata": {
-                "name": f"{name}-{self.dest_namespace}",
-                "namespace": self.source_namespace
-            },
-            "subjects": [
-                {
-                "kind": "ServiceAccount",
-                "name": "default",
-                "namespace": self.dest_namespace
-                }
-            ],
-            "roleRef": {
-                "kind": "ClusterRole",
-                "name": name,
-                "apiGroup": "rbac.authorization.k8s.io"
-            }
+            "apiVersion": "rbac.authorization.k8s.io/v1", "kind": "RoleBinding",
+            "metadata": { "name": f"{name}-{self.dest_namespace}", "namespace": self.source_namespace },
+            "subjects": [{ "kind": "ServiceAccount", "name": "default", "namespace": self.dest_namespace }],
+            "roleRef": { "kind": "ClusterRole", "name": name, "apiGroup": "rbac.authorization.k8s.io" }
         }
-
-        try:
-            subprocess.run(["oc", "get", "clusterrole", name], capture_output=True, check=True)
-        except Exception as e:
-            subprocess.run(["oc", "apply", "-f", "-"], input=json.dumps(cluster_role).encode(), check=True)
-
-        try:
-            subprocess.run(["oc", "get", "rolebinding", f"{name}-{self.dest_namespace}", '-n', self.source_namespace, '-o', 'json'], capture_output=True, check=True)
-        except Exception as e:
-            subprocess.run(["oc", "apply", "-f", "-"], input=json.dumps(role_binding).encode(), check=True)
-
+        self.create_if_not_exists(cluster_role)
+        self.create_if_not_exists(role_binding)
         
     def oc_get_vm(self, name):
         result = subprocess.run(['oc', 'get', 'vm', name, '-n', self.source_namespace, '-o', 'json'], capture_output=True, text=True, check=True)
@@ -190,14 +180,7 @@ class VM_NamespaceMigration(NamespaceMigration):
 
 
 args = parser.parse_args()
-
-try:
-    subprocess.run(['oc', 'status'], check=True, capture_output=True)
-except Exception as e:
-    print("Ensure `oc` is on the system path AND is logged into the target cluster")
-    exit(-1)
-
-
 migrate = VM_NamespaceMigration(args.src, args.dest)
-migrate.set_clone_permissions()
+migrate.oc_status_check()
+migrate.set_permissions()
 migrate.generate_clone_files(args.output_dir)
