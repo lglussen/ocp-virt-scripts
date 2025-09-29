@@ -5,9 +5,9 @@ import subprocess
 from argparse import ArgumentParser
 
 parser = ArgumentParser()
-parser.add_argument('src-namespace')
-parser.add_argument('dest-namespace')
-parser.add_argument('--output-dir', default=".")
+parser.add_argument('src', help="source namespace where VMs currently exist")
+parser.add_argument('dest', help="destination namespace: the target namespace of the VM migration / cloning operation")
+parser.add_argument('--output-dir', default=".", help="path to write new VM configuration files")
 
 class KS_Object:
 
@@ -127,9 +127,9 @@ class VM_NamespaceMigration:
 
 args = parser.parse_args()
 
-result = subprocess.run(['oc', 'get', 'vm' '-n', args.src_namespace, '-o', 'json'], capture_output=True, text=True, check=True)
+result = subprocess.run(['oc', 'get', 'vm' '-n', args.src, '-o', 'json'], capture_output=True, text=True, check=True)
 vms = json.loads(result.stdout)
-migrate = VM_NamespaceMigration(args.src_namespace, args.dest_namespace)
+migrate = VM_NamespaceMigration(args.src, args.dest)
 for vm in vms['items']:
     vm_name = vm['metadata']['name']
     clone = migrate.transform(vm_name)
