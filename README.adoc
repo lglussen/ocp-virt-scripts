@@ -1,32 +1,35 @@
+= Scripts for OpenShift Virtualization Operations
 
-= VM Namespace Migration in OpenShift
-
-Scripts to support cloning VMs into a new namespace as a workaround to not being no migration feature to allow migrating to new namespaces.
-
-It would be more "efficient" to reuse the same PV rather than cloning, but this method is simpler and doesn't require anything destructive to the original VM setup (no deleting of the original PVC objects required). This makes it easier to revert to the old vm if problems are encountered bringing the VM online in the new namespace.
-
-The scripts in the repository handle a few repetitive tasks but are by no means a full solution for all vms.  The _may_ work for all your vms, or maybe just a few.
-Instead, see this as a reference point for understanding how to cleanup and create new VM definitions based on the old definitions. 
-
-.The scripts do the following:
-1. configure namespace permissions
-2. transform the source VM config into a new VM confg for the destination namespace
-    * strips out state information and instance metadata (eg: uuid)
-    * strips out Mac addresses
-    * creates a DataVolume template to copy the PVC of the original VM
-    * modifies the namespace
-
-== Prerequisites
-These scripts require `oc` and `yq` to run. The `Containerfile` in this project defines a working environment that can be used to execute the scirpts.
-
-If you are missing `yq` another option would be to us `oc debug` to provision an environment with yq and this repository. 
-
+== Containerized ENV
+While not required, this repository along with helpful tooling such as `yq` may
+be run as a debug container in the target cluster to provide a workspace.
 [source, shell]
 ----
 oc debug --image=push quay.io/lglussen/ocp-tools:latest
 > oc login oc login --token=${YOUR_TOKEN} --server=${YOUR_OCP_API}
 ----
 
+
+== VM Namespace Migration in OpenShift (migrate.py)
+
+Script to support cloning VMs into a new namespace as a workaround to no direct namespace migration feature.
+
+It would be more efficient to reuse the same PV rather than cloning, but this method doesn't require anything destructive to the original VM setup (with the possible exception of MAC address if the MAC addresses need to Migrate). This makes it simple to revert to the old vm if problems are encountered bringing the VM online in the new namespace. Perhaps a direct method will be added later.
+
+The scripts in the repository handle a few repetitive tasks but may not cover all usecases.
+The _may_ work for all your vms - _please_ test.
+
+.The scripts do the following:
+1. configure namespace permissions to allow cloning data between namespaces
+2. transform the source VM config into a new VM confg for the destination namespace
+    * strips out state information and instance metadata (eg: uuid)
+    * strips out Mac addresses (unless `--preserve-mac` is specified)
+    * creates a DataVolume template to copy the PVC of the original VM
+    * modifies the namespace
+
+=== Reference Shell Script migration.sh
+For reference, I have kept a copy of `migrate.sh` which doesen't account for VMs with variable numbers of disk devices.
+It is however fairly simple to read and illustrates the core set of operations succinctly. 
 
 == Configure Clone Permissions
 

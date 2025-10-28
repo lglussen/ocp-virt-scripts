@@ -3,75 +3,20 @@ import os
 import json
 import subprocess
 from argparse import ArgumentParser
+from ocp_virtops import VM 
+from ocp_virtops import oc
 
 parser = ArgumentParser(description="Migrate VMs between Namespaces. Default strategy is to create a VM clone in the new namespace as this is the least destructive to the source VM and therefore the safest approach. Some options, such as preserving NIC MAC addresses will necessitate making changes to the source VM as OpenShift will not allow the same MAC to be held by more than one machine at a time. ")
 parser.add_argument('src', help="source namespace where VMs currently exist")
 parser.add_argument('dest', help="destination namespace: the target namespace of the VM migration / cloning operation")
-parser.add_argument('--output-dir', default=".", help="path to write new VM configuration files")
+parser.add_argument('-o', '--output-dir', dest="output_dir", default=".", help="path to write new VM configuration files")
 parser.add_argument('--preserve-mac', action='store_true', default=False, help="Preserve MAC addresses on NICS. You will be responsible for manually changing the MAC on the source VM before creating the clone VM")
 parser.add_argument('--name', default=False, help='run against only one specific VM rather than the entire namespace')
 parser.add_argument('--direct-migration', action='store_true', default=False, help="[NOT IMPLEMENTED] don't clone data - directly reference the PV of the source VM")
 
-class KS_Object:
-
-    def __init__(self, json_s):
-        self.data = json.loads(json_s)
-
-    def save(self):
-        subprocess.run(["oc", "apply", "-f", "-"], input=json.dumps(self.data).encode(), check=True)
-
-    def namespace(self):
-        return self.data['metadata']['namespace']
-
-    def delete(self, reference):
-        data = self.data
-        args =  reference.lstrip(".").split('.')
-        for x in args:
-            try:
-                parent = data
-                data = data[x]
-            except KeyError:
-                return
-        parent.pop(args[-1])
-
-       
-    def set(self, name, value):
-        data = self.data
-        args = name.lstrip(".").split(".")
-        for x in args:
-            try:
-                parent = data
-                data = data[x]
-            except KeyError:
-                data[x] = {}
-                data = data[x]
-        parent[args[-1]] = value
-
-    
-    def delete_any(self, keyname):
-        def _delete_any(d):
-            if isinstance(d, dict):
-                for k in list(d.keys()):
-                    if k == keyname:
-                        del d[k]
-                    else: _delete_any(d[k])
-            if isinstance(d, list) or isinstance(d, tuple):
-                for x in d: _delete_any(x)
-        _delete_any(self.data)
-
-    def oc_get(self, type, name):
-        result = subprocess.run(['oc', 'get', type, '-n', self.namespace, '-o', 'json'], capture_output=True, text=True, check=True)
-        return json.loads(result.stdout)
 
 
-class VM(KS_Object):
-    def dv_to_pvc(self):
-        self.delete("spec.dataVolumeTemplates")
-        for volume in self.data['spec']['template']['spec']['volumes']:
-            if "dataVolume" in volume:
-                dv = self.oc_get("datavolume", volume['dataVolume']['name'])
-                volume['persistentVolumeClaim'] = { 'claimName': dv['status']['claimName'] }
-                del volume['dataVolume']
+
 
 class NamespaceMigration():
     def __init__(self, args):
@@ -79,17 +24,18 @@ class NamespaceMigration():
         self.dest_namespace = args.dest
         self.name = args.name
 
-    def get_all(self):
-        result = subprocess.run(['oc', 'get', self.ks_type(), '-n', args.src, '-o', 'json'], capture_output=True, text=True, check=True)
-        return json.loads(result.stdout)['items'] 
-
-    def oc_status_check(self):
+    def create_if_not_exists(self, object):
+        args = ["oc", "get", object['kind'], object['metadata']['name']]
+        if "namespace" in object['metadata']:
+            args += ['-n', object['metadata']['namespace']]
         try:
-            subprocess.run(['oc', 'status'], check=True, capture_output=True)
+            subprocess.run(args, capture_output=True, check=True)
         except Exception as e:
-            print("Ensure `oc` is on the system path AND is logged into the target cluster")
-            exit(-1)
-    
+            subprocess.run(["oc", "apply", "-f", "-"], input=json.dumps(object).encode(), check=True)
+
+    def get_all(self):
+        return  oc.get_all(self.kind(), self.source_namespace)
+
     def generate_pvc_files(self, output_dir):
         pass
     
@@ -103,23 +49,15 @@ class NamespaceMigration():
             clone = self.transform(name)
             try:
                 import yaml
-                with open(os.path.join(output_dir, f"{name}.{self.ks_type()}-clone.yaml"), 'w', encoding='utf-8') as f:
+                with open(os.path.join(output_dir, f"{name}.{self.kind()}-clone.yaml"), 'w', encoding='utf-8') as f:
                     yaml.dump(clone, f)
             except:
-                with open(os.path.join(output_dir, f"{name}.{self.ks_type()}-clone.json"), 'w', encoding='utf-8') as f:
+                with open(os.path.join(output_dir, f"{name}.{self.kind()}-clone.json"), 'w', encoding='utf-8') as f:
                     f.write(json.dumps(clone, indent=4))
     
 
     def transform(self, name) -> dict: pass
 
-    def create_if_not_exists(self, object):
-        args = ["oc", "get", object['kind'], object['metadata']['name']]
-        if "namespace" in object['metadata']:
-            args += ['-n', object['metadata']['namespace']]
-        try:
-            subprocess.run(args, capture_output=True, check=True)
-        except Exception as e:
-            subprocess.run(["oc", "apply", "-f", "-"], input=json.dumps(object).encode(), check=True)
     
 
 class VM_NamespaceMigration(NamespaceMigration):
@@ -129,7 +67,7 @@ class VM_NamespaceMigration(NamespaceMigration):
         self.preserve_mac = args.preserve_mac
         
 
-    def ks_type(self):
+    def kind(self):
         return "vm"
 
     def set_permissions(self):
@@ -153,16 +91,13 @@ class VM_NamespaceMigration(NamespaceMigration):
         self.create_if_not_exists(role_binding)
         
     def oc_get_vm(self, name):
-        result = subprocess.run(['oc', 'get', 'vm', name, '-n', self.source_namespace, '-o', 'json'], capture_output=True, text=True, check=True)
-        return VM(result.stdout)
+        return VM(oc.get("vm", name, self.source_namespace))
     
-    def oc_get_dv(self, name):
-        result = subprocess.run(['oc', 'get', 'datavolume', name, '-n', self.source_namespace, '-o', 'json'], capture_output=True, text=True, check=True)
-        return json.loads(result.stdout)
+    def oc_get_dv(self, name): 
+        return oc.get("datavolume", name, self.source_namespace)
     
     def oc_get_pvc_storage(self, name):
-        result = subprocess.run(['oc', 'get', 'pvc', name, '-n', self.source_namespace, '-o', 'json'], capture_output=True, text=True, check=True)
-        pvc = json.loads(result.stdout)
+        pvc = oc.get("pvc", name, self.source_namespace)
         return pvc['status']['capacity']['storage']
     
     def convert_volumes_to_dv_clones(self, vm):
@@ -237,6 +172,6 @@ class VM_NamespaceMigration(NamespaceMigration):
 args = parser.parse_args()
 
 migrate = VM_NamespaceMigration(args)
-migrate.oc_status_check()
+oc.status_check()
 migrate.set_permissions()
 migrate.generate_clone_files(args.output_dir)
