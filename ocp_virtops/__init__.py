@@ -5,8 +5,15 @@ import subprocess
 class oc:
 
     @staticmethod
-    def delete(ktype, name, namespace):
-        subprocess.run(['oc', 'delete', ktype, name, '-n', namespace], check=True)
+    def _run(cmd, comment=None, **kwargs):
+        output = " ".join(cmd)
+        if comment: output += f" # {comment}"
+        print(output)
+        return subprocess.run(cmd, check=True, **kwargs)
+
+    @staticmethod
+    def delete(kind, name, namespace):
+        oc._run(['oc', 'delete', kind, name, '-n', namespace])
 
     @staticmethod
     def create_if_not_exists(object):
@@ -14,34 +21,38 @@ class oc:
         if "namespace" in object['metadata']:
             args += ['-n', object['metadata']['namespace']]
         try:
-            subprocess.run(args, capture_output=True, check=True)
+            oc._run(args)
         except Exception as e:
-            subprocess.run(["oc", "apply", "-f", "-"], input=json.dumps(object).encode(), check=True)
+            oc._run(["oc", "apply", "-f", "-"], input=json.dumps(object).encode())
 
     @staticmethod
-    def get(ktype, name, namespace):
-        print(" ".join(['oc', 'get', ktype, name, '-n', namespace, '-o', 'json']))
-        result = subprocess.run(['oc', 'get', ktype, name, '-n', namespace, '-o', 'json'], capture_output=True, text=True, check=True)
+    def get(kind, name, namespace, *, comment=None):
+        result = oc._run(['oc', 'get', kind, name, '-n', namespace, '-o', 'json'], comment, capture_output=True, text=True)
         return json.loads(result.stdout)
 
     @staticmethod
-    def get_all(ktype, namespace):
-        result = subprocess.run(['oc', 'get', ktype, '-n', namespace, '-o', 'json'], capture_output=True, text=True, check=True)
+    def get_all(kind, namespace):
+        result = oc._run(['oc', 'get', kind, '-n', namespace, '-o', 'json'], capture_output=True, text=True)
         return json.loads(result.stdout)['items']
 
     @staticmethod
     def status_check():
         try:
-            subprocess.run(['oc', 'status'], check=True, capture_output=True)
+            oc._run(['oc', 'status'], capture_output=True)
         except Exception as e:
+            print(e)
             print("Ensure `oc` is on the system path AND is logged into the target cluster")
             exit(-1)
 
     @staticmethod
     def apply(data):
         print(" ".join(["oc", "apply", "-f", "-"]))
-        subprocess.run(["oc", "apply", "-f", "-"], input=json.dumps(data).encode(), check=True)
+        oc._run(["oc", "apply", "-f", "-"], input=json.dumps(data).encode())
 
+    @staticmethod
+    def patch(kind, name, namespace, patch):
+        oc._run(["oc", "patch", "-n", namespace, f'{kind}/{name}', '--type', 'json', '--patch', patch ])
+        
 
 class Kube_Object:
 
@@ -50,7 +61,6 @@ class Kube_Object:
 
     def save(self):
         oc.apply(self.data)
-        #subprocess.run(["oc", "apply", "-f", "-"], input=json.dumps(self.data).encode(), check=True)
 
     def name(self):
         return self.data['metadata']['name']
@@ -118,20 +128,58 @@ class Kube_Object:
 
 class VM(Kube_Object):
 
-    def dv_to_pvc(self, *, apply=False, delete_dv=False):
-        self.delete("spec.dataVolumeTemplates")
+    def patch(self, p):
+        oc.patch(self.kind(), self.name(), self.namespace(), p)
+
+    def datavolume_sanity_check(self):
         for volume in self.get("spec.template.spec.volumes"):
             if "dataVolume" in volume:
                 datavolume_name = volume['dataVolume']['name']
-                dv = oc.get("datavolume", datavolume_name, self.namespace())
+                dv = oc.get("datavolume", datavolume_name, self.namespace(), comment="Getting the .status.phase value to ensure Import is complete")
+                if dv['status']['phase'] != 'Succeeded':
+                    print(f"[WARNING] datavolume/{datavolume_name} import phase is '{dv['status']['phase']}'")
+                    if dv['status']['phase'] == 'PendingPopulation':
+                        print("[WARNING] PendingPopulation indicates the process has not started.  You will need to start the VM initiate the import process")
+                    else:
+                        print("[WARNING] you may want to wait for progress to complete and for the phase to change to Success")
+                        print("          run 'oc get datavolume' to see the PHASE and PROGRESS of your datavolume imports in your target namespace")
+                    answer = input("Are you sure you want to continue? [y/N]: ")
+                    if answer.lower() == "y" or answer.lower() == 'yes':
+                        continue
+                    else:
+                        print("Stopping execution ...")
+                        exit()
+
+
+    def dv_to_pvc(self, *, apply=False, output_dir='.'):
+        self.datavolume_sanity_check()
+        
+        # not really necessary to do to the local object except for generating an output file
+        self.delete("spec.dataVolumeTemplates")
+        datavolumes = []
+        for volume in self.get("spec.template.spec.volumes"):
+            if "dataVolume" in volume:
+                datavolume_name = volume['dataVolume']['name']
+                datavolumes.append(datavolume_name)
+                dv = oc.get("datavolume", datavolume_name, self.namespace(), comment="getting the .status.claimName to find the backing PVC")
                 volume['persistentVolumeClaim'] = { 'claimName': dv['status']['claimName'] }
                 del volume['dataVolume']
-                if delete_dv:
-                    oc.delete('datavolume', datavolume_name, self.namespace())
-                    print("datavolume deleted ...")
-                else:
-                    print(f"Old Datavolume may be deleted now if desired: oc delete datavolume/{datavolume_name} -n {self.namespace()}")
-                if apply:
-                    oc.apply(self.data)
-                    print("changes applied to VM")
+                
+        if apply:
+            # running patch to delete dataVolumeTemplates because the 3 way merge of applying the self.data doesn't remove the element
+            patch = [{
+                "op":"remove", 
+                "path": "/spec/dataVolumeTemplates" 
+                },{
+                "op": "replace", 
+                "path": "/spec/template/spec/volumes",
+                "value": self.get("spec.template.spec.volumes")
+                }
+            ]
+            self.patch(json.dumps(patch, indent=4))
+            for dv in datavolumes:
+                oc.delete('datavolume', dv, self.namespace())
+        else:
+            self.write(output_dir)
+            
                 

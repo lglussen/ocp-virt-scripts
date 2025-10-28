@@ -16,8 +16,6 @@ parser.add_argument('--direct-migration', action='store_true', default=False, he
 
 
 
-
-
 class NamespaceMigration():
     def __init__(self, args):
         self.source_namespace = args.src
