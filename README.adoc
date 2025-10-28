@@ -1,8 +1,8 @@
 = Scripts for OpenShift Virtualization Operations
 
 == Containerized ENV
-While not required, this repository along with helpful tooling such as `yq` may
-be run as a debug container in the target cluster to provide a workspace.
+While not required, this repository (along with helpful tooling such as `yq`) may
+be used from a debug container in the target cluster to provide a workspace.  
 [source, shell]
 ----
 oc debug --image=push quay.io/lglussen/ocp-tools:latest
@@ -27,46 +27,33 @@ The _may_ work for all your vms - _please_ test.
     * creates a DataVolume template to copy the PVC of the original VM
     * modifies the namespace
 
+The script generates YAML files for the new VMs in the new namespace.  Running `oc apply -f` against the files is all that 
+is needed to start the process.
+
 === Reference Shell Script migration.sh
-For reference, I have kept a copy of `migrate.sh` which doesen't account for VMs with variable numbers of disk devices.
+For reference, I have kept a copy of `migrate.sh` under `sh_example` which doesn't account for VMs with variable numbers of disk devices.
 It is however fairly simple to read and illustrates the core set of operations succinctly. 
-
-== Configure Clone Permissions
-
-To allow cloning VM volumes into destination namespace, permissions need to be
-configured to allow access.
 [source, shell]
 ----
-sh lib/clone-permissions.sh <source namepsace> <destination namespace>
+cd sh_example
+sh clone-permissions.sh <source namepsace> <destination namespace>
+sh migrate.sh <vm_name> <src_namespace> <target_namespace>
 ----
 
-== Create the new VirtualMachine configuration
 
-We can export and modify the source VM configuration to deploy in our new 
-namespace.
+== Striping Out Datavolume Configuration
+Datavolumes are useful for preparing and importing data but are not really required once a VM is operational.
+To replace Datavolume configuration with direct PVC configuration for a more lean and direct VM configuration file
+you may run the `vm_datavolume_to_pvc.py` script
 
-[,shell]
+[source, shell]
 ----
-# for a single vm
-./transform.sh vm-name source-namespace destination-namespace
-
-# for all vms in a namespace
-for vm in `oc get vms -n source-ns -o custom-columns=NAME:.metadata.name --no-headers`; do
-  ./transform.sh $vm source-ns destination-ns
-done
+vm_datavolume_to_pvc.py vm_name -n your-namespace --apply
 ----
 
-.Output Directories:
-****
+Running with `--apply` will make the change to your system and delete the old Datavolume definitions. Running without
+`--apply` will generate a yaml file that represents what we _want_ the vm to look like (datavolume replaced with PVC)
+but doesn't apply any changes to the cluster.
 
-
-source_vm/:: `<vm-name>.yaml` (export of the current vm configuration)
-dest_vm/:: `new-<vm-name>.yaml` transformed yaml of the new VM definition 
-****
-
-WARNING: this will skip vms with more than one volume unless it is exactly 2 volumes of the pattern: one dataVolume and one CloudInitNoCloud volume. This script focuses on simple / common VMs and the output can be used as a guide for converting more complicated VMs
-
-
-Lastly, you can run `oc apply -f new-<vm-name>.yaml` against the files in the `./dest_vm/` directory to create the new vm definitions. Be sure to power down the source namespace beforehand.
 
 
