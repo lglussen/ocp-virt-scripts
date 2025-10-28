@@ -27,6 +27,11 @@ The _may_ work for all your vms - _please_ test.
     * creates a DataVolume template to copy the PVC of the original VM
     * modifies the namespace
 
+[source, shell]
+----
+./vm_migrate_namespace.py src_namespace dest_namespace --preserve-mac
+----
+
 The script generates YAML files for the new VMs in the new namespace.  Running `oc apply -f` against the files is all that 
 is needed to start the process.
 
