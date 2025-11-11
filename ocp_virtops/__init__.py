@@ -160,8 +160,8 @@ class VM(Kube_Object):
         for volume in self.get("spec.template.spec.volumes"):
             if "dataVolume" in volume:
                 datavolume_name = volume['dataVolume']['name']
-                datavolumes.append(datavolume_name)
                 dv = oc.get("datavolume", datavolume_name, self.namespace(), comment="getting the .status.claimName to find the backing PVC")
+                datavolumes.append(dv)
                 volume['persistentVolumeClaim'] = { 'claimName': dv['status']['claimName'] }
                 del volume['dataVolume']
                 
@@ -178,7 +178,9 @@ class VM(Kube_Object):
             ]
             self.patch(json.dumps(patch, indent=4))
             for dv in datavolumes:
-                oc.delete('datavolume', dv, self.namespace())
+                patch = [{'op':'replace', 'path':'/metadata/ownerReferences', 'value': dv['metadata']['ownerReferences'] }]
+                oc.patch('pvc', dv['status']['claimName'], self.namespace(), json.dumps(patch, indent=4))
+                oc.delete('datavolume', dv['metadata']['name'], self.namespace())
         else:
             self.write(output_dir)
             
